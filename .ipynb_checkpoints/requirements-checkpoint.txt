@@ -1,0 +1,9 @@
+torch
+torchvision
+timm
+mlflow
+dvc
+pandas
+numpy
+matplotlib
+pillow

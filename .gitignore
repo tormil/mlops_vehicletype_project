@@ -1,0 +1,48 @@
+# --- Python & Environments ---
+.venv/
+env/
+venv/
+ENV/
+bin/
+lib/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Data & Large Files (DVC handled) ---
+# We ignore the actual data, but NOT the .dvc files
+data/raw/
+data/processed/
+*.pth
+*.onnx
+*.weights
+*.zip
+*.tar.gz
+
+# --- IDE & System ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# --- DVC Local ---
+# Keep .dvc/ folders in Git, but ignore local credentials/cache
+.dvc/config.local
+.dvc/tmp/
+.dvc/cache/
