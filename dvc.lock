@@ -1,0 +1,21 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: python src/data_prep.py --raw_dir data/raw --processed_dir 
+      data/processed --val_per_class 10
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: 4ea7a03ed279c8b24df32d008a10e878.dir
+      size: 12241917
+      nfiles: 1005
+    - path: src/data_prep.py
+      hash: md5
+      md5: 8a0daf9e07be8bee197b3636f2099121
+      size: 2752
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: 2b64b7b2fdf558ecdf9e930c3e51cb9d.dir
+      size: 12234558
+      nfiles: 1003

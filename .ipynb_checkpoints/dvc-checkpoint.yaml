@@ -1,0 +1,8 @@
+stages:
+  prepare:
+    cmd: python src/data_prep.py --raw_dir data/raw --processed_dir data/processed --val_per_class 10
+    deps:
+      - src/data_prep.py
+      - data/raw
+    outs:
+      - data/processed

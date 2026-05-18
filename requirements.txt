@@ -4,6 +4,9 @@ timm
 mlflow
 dvc
 pandas
-numpy
+numpy<2
 matplotlib
 pillow
+
+scikit-learn
+tqdm
