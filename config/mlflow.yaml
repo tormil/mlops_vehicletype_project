@@ -1,0 +1,5 @@
+tracking_uri: http://127.0.0.1:5000
+experiment_name: vehicle-type-classification
+registered_model_name: vehicle-type-classifier
+backend_store_uri: sqlite:///mlflow.db
+artifact_root: ./mlruns_artifacts

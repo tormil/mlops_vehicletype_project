@@ -46,3 +46,10 @@ Thumbs.db
 .dvc/config.local
 .dvc/tmp/
 .dvc/cache/
+
+# --- MLFlow Local ---
+mlflow.db
+mlruns_artifacts/
+_tmp_artifacts/
+best_*.pth
+models/
