@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+mlflow
+numpy
+python-multipart
+torch
+torchvision
+timm
+pillow
