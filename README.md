@@ -13,12 +13,12 @@ orchestration, KServe deployment, and Prometheus/Grafana monitoring.
 
 ## Quickstart
 1. `pip install -r requirements.txt`
-2. `dvc pull` to fetch raw data, then `dvc repro prepare` to build train/val/test splits.
+2. Place the raw Vehicle-Type-10 images under `data/raw/` (with `train/` and `test/` subfolders), then run `dvc repro prepare` to build train/val/test splits.
 3. Start the MLflow server (see "Experiment tracking" below).
 4. Train: `cd src && python train.py --data_dir ../data/processed`.
 
 
-# Experiment tracking (MLflow)
+## Experiment tracking (MLflow)
 
 All training runs are logged to a local MLflow tracking server.
 
@@ -54,3 +54,30 @@ python -c "from mlflow.tracking import MlflowClient; MlflowClient(tracking_uri='
 ```
 Downstream services load by alias: `mlflow.pytorch.load_model("models:/vehicle-type-classifier@champion")`.
  
+## Deployment (Docker)
+
+The trained model is served via a FastAPI app inside a Docker container that loads from the MLflow Model Registry by alias.
+
+### Build
+From the project root:
+```powershell
+docker build -f deployment/Dockerfile -t vehicle-classifier:dev .
+```
+
+### Run
+The MLflow tracking server must be running on the host first.
+```powershell
+docker run --rm -p 8000:8000 `
+  -e MLFLOW_TRACKING_URI=http://host.docker.internal:5000 `
+  -e MODEL_URI=models:/vehicle-type-classifier@champion `
+  vehicle-classifier:dev
+```
+
+### Endpoints
+- `GET /health` → `{"status":"ok"}`
+- `POST /predict` — multipart form upload of a single image; returns top-3 classes with confidences.
+
+Example:
+```powershell
+curl.exe -F "file=@path/to/car.jpg" http://localhost:8000/predict
+```

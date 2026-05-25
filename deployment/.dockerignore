@@ -1,0 +1,13 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+data/
+mlruns_artifacts/
+mlflow.db
+models/
+_tmp_artifacts/
+notebooks/
+*.pth
+*.pt
+.dvc/cache
