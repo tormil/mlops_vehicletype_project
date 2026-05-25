@@ -1,3 +1,7 @@
+# The following line is required to install the correct version of PyTorch with CUDA 12.1 support. 
+# If you don't have a compatible GPU or don't need CUDA support, you can remove this line and just install torch and torchvision as usual.
+--extra-index-url https://download.pytorch.org/whl/cu121
+
 torch
 torchvision
 timm
@@ -7,6 +11,7 @@ pandas
 numpy<2
 matplotlib
 pillow
+pyyaml
 
 scikit-learn
 tqdm
