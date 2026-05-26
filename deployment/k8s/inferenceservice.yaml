@@ -5,6 +5,13 @@ metadata:
   namespace: vehicle
 spec:
   predictor:
+    minReplicas: 1
+    annotations:
+      # Disable Knative's scale-to-zero so the pod stays warm for the demo.
+      # Without this the autoscaler kills the pod after idle, then can't bring
+      # it back smoothly on a single-node minikube → ExitCode137 cycling.
+      autoscaling.knative.dev/min-scale: "1"
+      autoscaling.knative.dev/scale-down-delay: "30m"
     containers:
       - name: kserve-container
         image: vehicle-classifier:dev
