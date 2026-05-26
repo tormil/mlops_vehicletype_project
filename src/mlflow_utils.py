@@ -19,9 +19,16 @@ def load_mlflow_config(path=None):
 
 
 def init_mlflow(cfg):
-    """Point the MLflow client at the local tracking server and experiment."""
-    mlflow.set_tracking_uri(cfg["tracking_uri"])
-    mlflow.set_experiment(cfg["experiment_name"])
+    """Point the MLflow client at the tracking server and experiment.
+
+    Env vars take precedence over the YAML so the same scripts can run against
+    the local host server (default) or an in-cluster server when invoked from
+    a Kubeflow pipeline component.
+    """
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", cfg["tracking_uri"])
+    experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", cfg["experiment_name"])
+    mlflow.set_tracking_uri(tracking_uri)
+    mlflow.set_experiment(experiment_name)
 
 
 def get_dvc_data_rev(dvc_path="data/raw.dvc"):

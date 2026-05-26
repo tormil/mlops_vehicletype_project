@@ -1,0 +1,26 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: vehicle-classifier
+  namespace: vehicle
+spec:
+  predictor:
+    containers:
+      - name: kserve-container
+        image: vehicle-classifier:dev
+        imagePullPolicy: Never
+        ports:
+          - containerPort: 8000
+            protocol: TCP
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "http://mlflow-service.mlflow.svc.cluster.local:5000"
+          - name: MODEL_URI
+            value: "models:/vehicle-type-classifier@champion"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
