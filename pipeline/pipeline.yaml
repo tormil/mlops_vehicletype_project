@@ -1,0 +1,332 @@
+# PIPELINE DEFINITION
+# Name: vehicle-classifier-pipeline
+# Description: Smoke-test pipeline: prep -> train_baseline -> promote_champion -> rollout.
+#              The train_kfold component is defined above for the full course run but is
+#              disabled in this smoke pipeline because the convnext_base_advanced model
+#              doesn't fit alongside KFP+KServe+Istio in an 8 GiB minikube node. Once the
+#              cluster has more memory (12 GiB+), re-enable it as a sequential step after
+#              train_baseline.
+# Inputs:
+#    batch_size: int [Default: 8.0]
+#    epochs: int [Default: 1.0]
+components:
+  comp-data-prep-check:
+    executorLabel: exec-data-prep-check
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-promote-champion:
+    executorLabel: exec-promote-champion
+    inputDefinitions:
+      parameters:
+        baseline_status:
+          parameterType: STRING
+        kfold_status:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-rollout-inference:
+    executorLabel: exec-rollout-inference
+    inputDefinitions:
+      parameters:
+        promoted_version:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-train-baseline:
+    executorLabel: exec-train-baseline
+    inputDefinitions:
+      parameters:
+        batch_size:
+          parameterType: NUMBER_INTEGER
+        epochs:
+          parameterType: NUMBER_INTEGER
+        prep_status:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-data-prep-check:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_prep_check
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_prep_check() -> str:\n    import os\n    expected = [\"\
+          /data/processed/train\", \"/data/processed/val\", \"/data/processed/test\"\
+          ]\n    for p in expected:\n        if not os.path.isdir(p):\n          \
+          \  raise FileNotFoundError(f\"Missing required directory: {p}\")\n    classes\
+          \ = os.listdir(\"/data/processed/train\")\n    if len(classes) < 10:\n \
+          \       raise ValueError(f\"Expected >=10 train classes, got {len(classes)}:\
+          \ {classes}\")\n    print(f\"data PVC OK: {len(classes)} classes; train/val/test\
+          \ all present\")\n    return \"ok\"\n\n"
+        image: vehicle-trainer:dev
+    exec-promote-champion:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - promote_champion
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef promote_champion(baseline_status: str, kfold_status: str) ->\
+          \ str:\n    import mlflow\n    from mlflow.tracking import MlflowClient\n\
+          \    mlflow.set_tracking_uri(\"http://mlflow-service.mlflow.svc.cluster.local:5000\"\
+          )\n    client = MlflowClient()\n    versions = client.search_model_versions(\"\
+          name='vehicle-type-classifier'\")\n    if not versions:\n        raise RuntimeError(\"\
+          No model versions registered yet\")\n    best = None\n    best_acc = -1.0\n\
+          \    for v in versions:\n        run = client.get_run(v.run_id)\n      \
+          \  # train.py logs val_acc; train_model2.py logs cv_mean_acc on parent run\n\
+          \        acc = float(run.data.metrics.get(\"val_acc\", run.data.metrics.get(\"\
+          cv_mean_acc\", -1)))\n        print(f\"  v{v.version} run={v.run_id[:8]}\
+          \ acc={acc:.4f}\")\n        if acc > best_acc:\n            best_acc = acc\n\
+          \            best = v\n    client.set_registered_model_alias(\"vehicle-type-classifier\"\
+          , \"champion\", best.version)\n    print(f\"Promoted v{best.version} to\
+          \ @champion (acc={best_acc:.4f})\")\n    return f\"v{best.version}\"\n\n"
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: http://mlflow-service.mlflow.svc.cluster.local:5000
+        image: vehicle-trainer:dev
+    exec-rollout-inference:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - rollout_inference
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes==30.1.0'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef rollout_inference(promoted_version: str) -> str:\n    \"\"\"\
+          Patch the InferenceService so KServe restarts the predictor pod and\n  \
+          \  the new @champion model gets loaded. No-op if the InferenceService\n\
+          \    isn't deployed yet.\"\"\"\n    from kubernetes import client, config\n\
+          \    import time\n    config.load_incluster_config()\n    api = client.CustomObjectsApi()\n\
+          \    body = {\n        \"spec\": {\n            \"predictor\": {\n     \
+          \           \"containers\": [\n                    {\n                 \
+          \       \"name\": \"kserve-container\",\n                        \"env\"\
+          : [\n                            {\"name\": \"ROLLOUT_TIMESTAMP\", \"value\"\
+          : str(int(time.time()))},\n                            {\"name\": \"PROMOTED_VERSION\"\
+          , \"value\": promoted_version},\n                        ],\n          \
+          \          }\n                ]\n            }\n        }\n    }\n    try:\n\
+          \        api.patch_namespaced_custom_object(\n            group=\"serving.kserve.io\"\
+          ,\n            version=\"v1beta1\",\n            namespace=\"vehicle\",\n\
+          \            plural=\"inferenceservices\",\n            name=\"vehicle-classifier\"\
+          ,\n            body=body,\n        )\n        print(f\"Triggered InferenceService\
+          \ rollout for {promoted_version}\")\n        return \"rolled-out\"\n   \
+          \ except client.exceptions.ApiException as e:\n        if e.status == 404:\n\
+          \            print(\"InferenceService 'vehicle-classifier' not deployed\
+          \ yet \u2014 skipping rollout\")\n            return \"skipped\"\n     \
+          \   raise\n\n"
+        image: vehicle-trainer:dev
+    exec-train-baseline:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_baseline
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_baseline(prep_status: str, epochs: int, batch_size: int)\
+          \ -> str:\n    import subprocess, sys\n    cmd = [\n        \"python\",\
+          \ \"/app/src/train.py\",\n        \"--data_dir\", \"/data/processed\",\n\
+          \        \"--model_name\", \"swin_tiny\",\n        \"--epochs\", str(epochs),\n\
+          \        \"--batch_size\", str(batch_size),\n    ]\n    print(\"Running:\"\
+          , \" \".join(cmd), flush=True)\n    proc = subprocess.run(cmd, cwd=\"/app\"\
+          , capture_output=True, text=True)\n    sys.stdout.write(proc.stdout)\n \
+          \   sys.stderr.write(proc.stderr)\n    if proc.returncode != 0:\n      \
+          \  raise RuntimeError(f\"train.py exited {proc.returncode}\")\n    return\
+          \ \"baseline-done\"\n\n"
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: http://mlflow-service.mlflow.svc.cluster.local:5000
+        image: vehicle-trainer:dev
+        resources:
+          cpuLimit: 3.0
+          memoryLimit: 6.442450944
+          resourceCpuLimit: '3'
+          resourceMemoryLimit: 6Gi
+pipelineInfo:
+  description: 'Smoke-test pipeline: prep -> train_baseline -> promote_champion ->
+    rollout.
+
+    The train_kfold component is defined above for the full course run but is
+
+    disabled in this smoke pipeline because the convnext_base_advanced model
+
+    doesn''t fit alongside KFP+KServe+Istio in an 8 GiB minikube node. Once the
+
+    cluster has more memory (12 GiB+), re-enable it as a sequential step after
+
+    train_baseline.'
+  name: vehicle-classifier-pipeline
+root:
+  dag:
+    tasks:
+      data-prep-check:
+        cachingOptions: {}
+        componentRef:
+          name: comp-data-prep-check
+        taskInfo:
+          name: data-prep-check
+      promote-champion:
+        cachingOptions: {}
+        componentRef:
+          name: comp-promote-champion
+        dependentTasks:
+        - train-baseline
+        inputs:
+          parameters:
+            baseline_status:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: train-baseline
+            kfold_status:
+              runtimeValue:
+                constant: skipped
+        taskInfo:
+          name: promote-champion
+      rollout-inference:
+        cachingOptions: {}
+        componentRef:
+          name: comp-rollout-inference
+        dependentTasks:
+        - promote-champion
+        inputs:
+          parameters:
+            promoted_version:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: promote-champion
+        taskInfo:
+          name: rollout-inference
+      train-baseline:
+        cachingOptions: {}
+        componentRef:
+          name: comp-train-baseline
+        dependentTasks:
+        - data-prep-check
+        inputs:
+          parameters:
+            batch_size:
+              componentInputParameter: batch_size
+            epochs:
+              componentInputParameter: epochs
+            prep_status:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: data-prep-check
+        taskInfo:
+          name: train-baseline
+  inputDefinitions:
+    parameters:
+      batch_size:
+        defaultValue: 8.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      epochs:
+        defaultValue: 1.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.16.1
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-data-prep-check:
+          pvcMount:
+          - constant: vehicle-data
+            mountPath: /data
+            pvcNameParameter:
+              runtimeValue:
+                constant: vehicle-data
+        exec-train-baseline:
+          pvcMount:
+          - constant: vehicle-data
+            mountPath: /data
+            pvcNameParameter:
+              runtimeValue:
+                constant: vehicle-data
