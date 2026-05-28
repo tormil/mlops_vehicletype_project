@@ -120,10 +120,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a vehicle type classification model.")
     parser.add_argument("--data_dir", type=str, default="data/raw", help="Path to the raw data directory.")
     parser.add_argument("--model_name", type=str, default="swin_tiny", help="Model architecture (e.g., resnet18, efficientnet_b0).")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training.")
     parser.add_argument("--img_size", type=int, default=224, help="Input image size (height and width).")
     parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate for the optimizer.")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
+    parser.add_argument("--epochs", type=int, default=2, help="Number of training epochs.")
     
     args = parser.parse_args()
     train(args)
