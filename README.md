@@ -12,6 +12,31 @@ orchestration, KServe deployment, and Prometheus/Grafana monitoring.
 - `scripts/` — helper scripts (MLflow server launcher).
 - `deployment/` — Dockerfiles + K8s manifests (in-cluster MLflow, KServe `InferenceService`, RBAC).
 - `pipeline/` — Kubeflow Pipelines DAG definition.
+- `examples/` - screenshots and the exported Grafana dashboard JSON.
+
+## Example outputs
+
+MLflow run:
+
+![MLflow run](examples/mlflow_run.png)
+
+Kubeflow pipeline:
+
+![Kubeflow pipeline](examples/kubeflow_pipeline.png)
+
+Kubeflow runs:
+
+![Kubeflow runs](examples/kubeflow_runs.png)
+
+Prometheus target:
+
+![Prometheus target](examples/prometheus_target.png)
+
+Grafana dashboard:
+
+![Grafana dashboard](examples/grafana_dashboard.png)
+
+Grafana dashboard JSON: import `examples/dashboard-1780026265615.json`.
 
 ## Quickstart
 1. `pip install -r requirements.txt`
@@ -220,4 +245,9 @@ Get the Grafana password:
 kubectl get secret -n monitoring prom-grafana -o jsonpath="{.data.admin-password}" | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }
 ```
 
-Then open `http://localhost:3000` and log in as `admin`. Useful first panels: prediction count by class, request latency, error count, and confidence distribution.
+Then open `http://localhost:3000` and log in as `admin`.
+
+Import the dashboard JSON from `examples/dashboard-1780026265615.json`:
+`Dashboards` -> `New` -> `Import` -> upload the JSON file.
+
+Useful panels: prediction count by class, request latency, error count, and confidence distribution.
