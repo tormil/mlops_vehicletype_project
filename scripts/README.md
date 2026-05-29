@@ -3,7 +3,6 @@
 Run all commands from the project root:
 
 ```powershell
-cd C:\Users\merilipi\Documents\GitHub\mlops_vehicletype_project
 Set-ExecutionPolicy -Scope Process Bypass
 ```
 
