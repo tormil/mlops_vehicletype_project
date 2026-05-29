@@ -312,9 +312,19 @@ function Remove-MinikubeImageIfPresent {
     )
 
     Write-Host "Removing cached Minikube image if present: $Image"
-    & $Minikube image rm $Image 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Image was not cached in Minikube, continuing."
+    $previousErrorActionPreference = $ErrorActionPreference
+    $exitCode = 0
+    try {
+        $ErrorActionPreference = "Continue"
+        & $Minikube image rm $Image *> $null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($exitCode -ne 0) {
+        Write-Host "Could not remove cached image, continuing with image load."
     }
 }
 
