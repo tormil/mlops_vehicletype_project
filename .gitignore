@@ -53,3 +53,6 @@ mlruns_artifacts/
 _tmp_artifacts/
 best_*.pth
 models/
+
+
+.tmp/
