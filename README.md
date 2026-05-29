@@ -3,7 +3,7 @@
 End-to-end MLOps pipeline for vehicle body-type classification on the
 Vehicle-Type-10 dataset (1002 images, 10 classes). Covers DVC-versioned
 data, MLflow experiment tracking + model registry, Kubeflow Pipelines
-orchestration, KServe deployment, and (next) Prometheus/Grafana monitoring.
+orchestration, KServe deployment, and Prometheus/Grafana monitoring.
 
 ## Repository layout
 - `data/` — raw + processed images, versioned with DVC.
@@ -77,6 +77,7 @@ docker run --rm -p 8000:8000 `
 
 ### Endpoints
 - `GET /health` → `{"status":"ok"}`
+- `GET /metrics` — Prometheus metrics for request status, latency, predicted class, and confidence.
 - `POST /predict` — multipart form upload of a single image; returns top-3 classes with confidences.
 
 Example:
@@ -171,27 +172,7 @@ KServe replaces raw `Deployment + Service + Ingress` with a single `InferenceSer
 
 ### Install KServe + dependencies (one time)
 ```powershell
-# Istio (Knative's ingress)
-kubectl apply -l knative.dev/crd-install=true -f https://github.com/knative/net-istio/releases/download/knative-v1.16.0/istio.yaml
-kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.16.0/istio.yaml
-kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.16.0/net-istio.yaml
-kubectl wait --for=condition=ready pod --all -n istio-system --timeout=300s
-
-# Knative Serving
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-crds.yaml
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.16.0/serving-core.yaml
-kubectl wait --for=condition=ready pod --all -n knative-serving --timeout=300s
-
-# cert-manager (KServe dep)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.1/cert-manager.yaml
-kubectl wait --for=condition=ready pod --all -n cert-manager --timeout=300s
-
-# KServe
-kubectl apply --server-side --force-conflicts -f https://github.com/kserve/kserve/releases/download/v0.14.0/kserve.yaml
-kubectl apply -f https://github.com/kserve/kserve/releases/download/v0.14.0/kserve-cluster-resources.yaml
-
-# The localmodel-controller is optional and crash-loops on minikube; scale it to zero
-kubectl scale deployment kserve-localmodel-controller-manager -n kserve --replicas=0
+.\scripts\setup_kserve.ps1
 ```
 
 ### Deploy the InferenceService
@@ -216,48 +197,27 @@ curl.exe -F "file=@data/processed/val/sedan/<some-image>.jpg" http://localhost:8
 2. The pipeline's `rollout_inference` component patches the `InferenceService` (mutates an env var), which triggers KServe to spawn a new predictor revision. The new revision loads `models:/vehicle-type-classifier@champion` on startup → serves the new model.
 3. No manifest edit needed, no manual `kubectl rollout`. The `InferenceService` URL stays the same.
 
-## Next phase: Monitoring (Prometheus + Grafana)
+## Monitoring (Prometheus + Grafana)
 
-The monitoring stack is the next deliverable. This section captures everything the next person needs to continue without re-discovering it.
+The FastAPI app exposes Prometheus metrics at `/metrics`. Custom metrics:
+- `vehicle_prediction_requests_total`
+- `vehicle_prediction_classes_total`
+- `vehicle_prediction_latency_seconds`
+- `vehicle_prediction_confidence`
 
-### What's already in place
-- KServe exposes Prometheus metrics out of the box on each predictor pod (port 9090 of the `queue-proxy` sidecar). Standard Knative metrics: request count, request latency, response code distribution. No code changes needed in the FastAPI app to see these.
-- Istio exposes its own metrics on port 15090 of every sidecar. Useful for east-west traffic visibility.
-- Both MLflow and KFP have their own `/metrics` endpoints if you want pipeline-level metrics.
-
-### What needs building
-1. **Install Prometheus + Grafana via Helm** (kube-prometheus-stack):
-   ```powershell
-   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-   helm repo update
-   kubectl create namespace monitoring
-   helm install prom prometheus-community/kube-prometheus-stack -n monitoring `
-     --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false `
-     --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
-   ```
-   The two `*SelectorNilUsesHelmValues=false` flags are important — without them, Prometheus only scrapes targets labeled with this Helm release name, missing KServe/Istio.
-2. **Wire Prometheus to scrape KServe** — apply a `PodMonitor` targeting pods with the label `serving.kserve.io/inferenceservice=vehicle-classifier` in the `vehicle` namespace, port `queue-proxy:9090`.
-3. **Add model-level metrics** (request rate, latency P50/P95/P99, error rate, prediction class distribution, mean confidence). The first four come "free" from KServe; the latter two need a small Prometheus client in [deployment/app/main.py](deployment/app/main.py) — `Counter` per class, `Histogram` for confidence.
-4. **Build Grafana dashboards**:
-   - Import the KServe community dashboard (Grafana dashboard ID `13030` or current equivalent) as a starting point.
-   - Add a "model health" row: prediction class distribution (donut), confidence histogram, error rate, P99 latency.
-   - Add alerts: error rate >5%, P99 latency >2s, no traffic for 10 min.
-
-### Useful entry points
-- KServe metrics docs: https://kserve.github.io/website/master/modelserving/observability/prometheus_metrics/
-- The `InferenceService` will already expose Prometheus scrape annotations once you set `serving.knative.dev/scrape: "true"` on its `metadata.annotations`. Add that in [deployment/k8s/inferenceservice.yaml](deployment/k8s/inferenceservice.yaml).
-- Plan file lives at `C:\Users\User\.claude\plans\this-project-implements-an-valiant-aurora.md` if continuing in Claude Code.
-
-### Resource warning
-The current minikube node is at ~7 GiB used of 8 GiB. Prometheus + Grafana add another ~1.5 GiB. Bump the cluster before installing:
+Install Prometheus + Grafana and apply the scraper:
 ```powershell
-minikube stop
-minikube start --memory 12288   # 12 GiB
+.\scripts\setup_monitoring.ps1
 ```
-PVCs (MLflow, data) survive a `stop`/`start` — only `minikube delete` torches them.
 
-### Smoke test definition of done (for the monitoring PR)
-- Grafana reachable via `kubectl port-forward -n monitoring svc/prom-grafana 3000:80`.
-- KServe dashboard shows non-zero request count after hitting `/predict` once.
-- At least one custom panel ("predictions by class" or "mean confidence") populated by the FastAPI app's own metrics.
-- Alert rule defined for "error rate > 5% over 5m".
+Open Grafana:
+```powershell
+kubectl port-forward -n monitoring svc/prom-grafana 3000:80
+```
+
+Get the Grafana password:
+```powershell
+kubectl get secret -n monitoring prom-grafana -o jsonpath="{.data.admin-password}" | % { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }
+```
+
+Then open `http://localhost:3000` and log in as `admin`. Useful first panels: prediction count by class, request latency, error count, and confidence distribution.
