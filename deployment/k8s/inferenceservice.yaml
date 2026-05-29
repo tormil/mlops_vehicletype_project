@@ -10,7 +10,8 @@ spec:
         image: vehicle-classifier:dev
         imagePullPolicy: Never
         ports:
-          - containerPort: 8000
+          - name: http1
+            containerPort: 8000
             protocol: TCP
         env:
           - name: MLFLOW_TRACKING_URI

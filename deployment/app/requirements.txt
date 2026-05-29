@@ -3,6 +3,7 @@ uvicorn[standard]
 mlflow
 numpy
 python-multipart
+prometheus-client
 torch
 torchvision
 timm

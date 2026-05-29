@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vehicle-classifier
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - vehicle
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: vehicle-classifier
+  podMetricsEndpoints:
+    - port: user-port
+      path: /metrics
+      interval: 15s
